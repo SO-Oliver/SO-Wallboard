@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lever Code Display</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            color: white;
+            min-height: 100vh;
+            transition: background 0.6s ease;
+            display: flex;
+            flex-direction: column;
+            cursor: none;
+        }
+
+        body.code-green  { background: linear-gradient(135deg, #1a4a2e 0%, #27ae60 100%); }
+        body.code-yellow { background: linear-gradient(135deg, #e6a800 0%, #ffe135 100%); color: #2c2c2c; }
+        body.code-orange { background: linear-gradient(135deg, #4a2200 0%, #e67e22 100%); }
+        body.code-red    { background: linear-gradient(135deg, #4a0a0a 0%, #e74c3c 100%); }
+        body.code-black  { background: linear-gradient(135deg, #000 0%, #2c2c2c 100%); }
+
+        /* ── Yellow dark-text overrides ── */
+        body.code-yellow .page-title,
+        body.code-yellow .page-subtitle,
+        body.code-yellow .time-display,
+        body.code-yellow .voice-heading,
+        body.code-yellow .agents-heading,
+        body.code-yellow .stat-number,
+        body.code-yellow .stat-lbl,
+        body.code-yellow .agents-row-label,
+        body.code-yellow .agents-row-count,
+        body.code-yellow .code-name,
+        body.code-yellow .code-state,
+        body.code-yellow .section-label,
+        body.code-yellow .op-state-text,
+        body.code-yellow .action-item { color: #2c2c2c; }
+
+        body.code-yellow .card { background: rgba(0,0,0,0.08); border: 1.5px solid rgba(0,0,0,0.35); }
+        body.code-yellow .connection-status.connected { color: #1a6b35; background: rgba(26,107,53,0.2); }
+
+        /* ── Flash overlay ── */
+        .flash-overlay {
+            position: fixed; inset: 0; pointer-events: none; z-index: 999;
+            opacity: 0;
+        }
+        .flash-overlay.active { animation: flashPulse 1s infinite; }
+        .flash-overlay.green  { background: #27ae60; }
+        .flash-overlay.yellow { background: #f39c12; }
+        .flash-overlay.orange { background: #e67e22; }
+        .flash-overlay.red    { background: #e74c3c; }
+        .flash-overlay.black  { background: #555; }
+        @keyframes flashPulse { 0%,100%{opacity:0} 50%{opacity:0.35} }
+
+        /* ── Fixed top bar ── */
+        .time-display {
+            position: fixed; top: 14px; left: 20px;
+            font-size: 1rem; font-weight: 700; opacity: 0.9; z-index: 100;
+            letter-spacing: 0.04em;
+        }
+        .connection-status {
+            position: fixed; top: 12px; right: 20px;
+            font-size: 0.75rem; font-weight: 700;
+            padding: 5px 14px; border-radius: 20px; z-index: 100;
+            letter-spacing: 0.04em;
+        }
+        .connection-status.connected    { background: rgba(39,174,96,0.35);  color: #5ddb8f; }
+        .connection-status.disconnected { background: rgba(231,76,60,0.35);  color: #e74c3c; }
+        .connection-status.connecting   { background: rgba(243,156,18,0.35); color: #f39c12; }
+
+        /* ── Main scroll area ── */
+        .page-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px 90px;
+            gap: 0;
+        }
+
+        /* ── Page heading ── */
+        .page-heading {
+            text-align: center;
+            margin-bottom: 22px;
+        }
+        .page-title {
+            font-size: 2.8rem; font-weight: 900; letter-spacing: 0.02em;
+        }
+        .page-subtitle {
+            font-size: 0.9rem; opacity: 0.65; margin-top: 4px;
+        }
+
+        /* ── Card base ── */
+        .card {
+            background: rgba(255,255,255,0.15);
+            border-radius: 14px;
+        }
+
+        /* ── Top row ── */
+        .top-row {
+            display: flex; gap: 14px; width: 100%; max-width: 750px;
+            margin-bottom: 14px;
+        }
+
+        /* ── Voice card ── */
+        .voice-card {
+            flex: 7;
+            padding: 20px 22px 22px;
+        }
+        .card-head {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 16px;
+        }
+        .card-head svg { width: 20px; height: 20px; opacity: 0.85; flex-shrink: 0; }
+        .voice-heading, .agents-heading {
+            font-size: 1.25rem; font-weight: 800; letter-spacing: 0.01em;
+        }
+        .voice-stats {
+            display: flex; gap: 12px; align-items: flex-end;
+        }
+        .voice-stat { flex: 1; text-align: center; min-width: 55px; }
+        .voice-stat.wait { flex: 3; min-width: 100px; }
+        .stat-number {
+            font-size: 4.5rem; font-weight: 900; line-height: 1;
+            display: block; white-space: nowrap;
+        }
+        .stat-lbl {
+            font-size: 0.58rem; font-weight: 700; letter-spacing: 0.1em;
+            text-transform: uppercase; opacity: 0.6;
+            margin-top: 6px; line-height: 1.4;
+        }
+
+        /* ── Agents card ── */
+        .agents-card {
+            flex: 3;
+            padding: 20px 18px 22px;
+            display: flex; flex-direction: column;
+        }
+        .agents-bar-wrap {
+            height: 7px; border-radius: 6px; overflow: hidden;
+            display: flex; margin: 10px 0 14px;
+        }
+        .agents-bar-available   { background: #27ae60; transition: width 0.5s; }
+        .agents-bar-unavailable { background: #e74c3c; transition: width 0.5s; }
+        .agents-bar-offline     { background: rgba(255,255,255,0.22); transition: width 0.5s; }
+
+        .agents-rows { display: flex; flex-direction: column; gap: 12px; }
+        .agents-row  { display: flex; align-items: center; gap: 8px; }
+        .agents-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .agents-dot.available   { background: #27ae60; }
+        .agents-dot.unavailable { background: #e74c3c; }
+        .agents-dot.offline     { background: rgba(255,255,255,0.4); }
+        .agents-row-label { font-size: 0.9rem; opacity: 0.75; flex: 1; }
+        .agents-row-count { font-size: 1.1rem; font-weight: 900; }
+
+        /* ── Current Status card ── */
+        .status-card {
+            width: 100%; max-width: 750px;
+            padding: 20px 28px 22px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .section-label {
+            font-size: 0.62rem; font-weight: 700; letter-spacing: 0.14em;
+            text-transform: uppercase; opacity: 0.55; margin-bottom: 6px;
+        }
+        .code-name {
+            font-size: 3.2rem; font-weight: 900; letter-spacing: 0.18em; line-height: 1;
+        }
+        .code-state {
+            font-size: 1rem; opacity: 0.8; margin-top: 6px;
+        }
+
+        /* ── Alert badge ── */
+        .alert-badge {
+            display: none;
+            margin-top: 10px;
+            background: rgba(155,89,182,0.65); border: 1.5px solid #9b59b6;
+            border-radius: 20px; padding: 6px 22px;
+            font-size: 0.85rem; font-weight: 800; letter-spacing: 0.1em;
+            animation: alertPulse 1s infinite;
+        }
+        .alert-badge.visible { display: inline-block; }
+        @keyframes alertPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+        /* ── Operational info card ── */
+        .op-card {
+            width: 100%; max-width: 750px;
+            padding: 18px 36px 22px;
+            text-align: center;
+        }
+        .op-section { margin-bottom: 12px; }
+        .op-section:last-child { margin-bottom: 0; }
+        .op-state-text {
+            font-size: 0.95rem; opacity: 0.85; margin-top: 5px;
+        }
+        .action-item {
+            font-size: 0.9rem; opacity: 0.8; margin-top: 5px;
+        }
+
+        /* ── KING Footer ── */
+        .values-footer {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #FAF8F5; padding: 12px 36px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-top: 1px solid #E8E4E0; z-index: 100;
+        }
+        .king-logo { font-size: 1.4rem; font-weight: 900; letter-spacing: 8px; color: #2C2C2C; }
+        .values-container { display: flex; gap: 36px; align-items: center; }
+        .value-item { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .value-icon { width: 22px; height: 22px; }
+        .value-icon.passion       { color: #8B6B61; }
+        .value-icon.integrity     { color: #4A7C8B; }
+        .value-icon.collaboration { color: #C4767A; }
+        .value-icon.innovation    { color: #5B9A8B; }
+        .value-label { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; color: #8B8580; }
+
+        /* ── Fullscreen hint ── */
+        .fullscreen-hint {
+            position: fixed; bottom: 72px; right: 16px;
+            font-size: 0.65rem; opacity: 0.3; z-index: 50;
+            transition: opacity 1s;
+        }
+    </style>
+</head>
+<body class="code-green">
+<div class="flash-overlay green" id="flashOverlay"></div>
+<div class="time-display" id="timeDisplay"></div>
+<div class="connection-status connecting" id="connectionStatus">Connecting...</div>
+
+<div class="page-body">
+
+    <!-- Heading -->
+    <div class="page-heading">
+        <div class="page-title">Lever Code Wallboard</div>
+        <div class="page-subtitle">Real-Time Operations Control</div>
+    </div>
+
+    <!-- Top row: Voice + Agents -->
+    <div class="top-row">
+
+        <!-- Voice -->
+        <div class="card voice-card">
+            <div class="card-head">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                <span class="voice-heading">Voice</span>
+            </div>
+            <div class="voice-stats">
+                <div class="voice-stat">
+                    <div><span class="stat-number" id="statActive">—</span></div>
+                    <div class="stat-lbl">ACTIVE<br>TASKS</div>
+                </div>
+                <div class="voice-stat">
+                    <div><span class="stat-number" id="statWaiting">—</span></div>
+                    <div class="stat-lbl">WAITING<br>TASKS</div>
+                </div>
+                <div class="voice-stat wait">
+                    <div>
+                        <span class="stat-number" id="statWait">—</span>
+                    </div>
+                    <div class="stat-lbl">LONGEST<br>WAIT</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Agents -->
+        <div class="card agents-card">
+            <div class="card-head">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                <span class="agents-heading">Agents</span>
+            </div>
+            <div class="agents-bar-wrap">
+                <div class="agents-bar-available"   id="barAvailable"   style="width:33%"></div>
+                <div class="agents-bar-unavailable" id="barUnavailable" style="width:33%"></div>
+                <div class="agents-bar-offline"     id="barOffline"     style="width:34%"></div>
+            </div>
+            <div class="agents-rows">
+                <div class="agents-row">
+                    <div class="agents-dot available"></div>
+                    <span class="agents-row-label">Available</span>
+                    <span class="agents-row-count" id="countAvailable">—</span>
+                </div>
+                <div class="agents-row">
+                    <div class="agents-dot unavailable"></div>
+                    <span class="agents-row-label">Unavailable</span>
+                    <span class="agents-row-count" id="countUnavailable">—</span>
+                </div>
+                <div class="agents-row">
+                    <div class="agents-dot offline"></div>
+                    <span class="agents-row-label">Offline</span>
+                    <span class="agents-row-count" id="countOffline">—</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Current Status -->
+    <div class="card status-card">
+        <div class="section-label">Current Status</div>
+        <div class="code-name" id="codeName">GREEN</div>
+        <div class="code-state" id="codeState">Full Availability</div>
+        <div class="alert-badge" id="alertBadge">⚠ ALERT ACTIVE</div>
+    </div>
+
+    <!-- Operational Info -->
+    <div class="card op-card">
+        <div class="op-section">
+            <div class="section-label">Operational State</div>
+            <div class="op-state-text" id="operationalState">Stable queue / Surplus availability</div>
+        </div>
+        <div class="op-section">
+            <div class="section-label">Actions</div>
+            <div id="actions">
+                <div class="action-item">• Scheduled coachings auto-approved (2-3 HC per interval)</div>
+                <div class="action-item">• WFM checks threshold for pullouts</div>
+                <div class="action-item">• Normal task distribution</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- KING Footer -->
+<div class="values-footer">
+    <span class="king-logo">K I N G</span>
+    <div class="values-container">
+        <div class="value-item">
+            <svg class="value-icon passion" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            <span class="value-label">PASSION</span>
+        </div>
+        <div class="value-item">
+            <svg class="value-icon integrity" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+            <span class="value-label">INTEGRITY</span>
+        </div>
+        <div class="value-item">
+            <svg class="value-icon collaboration" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            <span class="value-label">COLLABORATION</span>
+        </div>
+        <div class="value-item">
+            <svg class="value-icon innovation" viewBox="0 0 24 24" fill="currentColor"><path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/></svg>
+            <span class="value-label">INNOVATION</span>
+        </div>
+    </div>
+</div>
+
+<div class="fullscreen-hint" id="fullscreenHint">[ F ] Fullscreen</div>
+
+<script>
+    // ============================================================
+    //  CONFIG
+    // ============================================================
+    const FUNCTIONS_BASE_URL = 'https://lever-code-7033.twil.io';
+    const SECRET_KEY = 'KL20252026';
+    // Channel — set via URL param: display.html?channel=delivery
+    // Must match the channel set in the corresponding controller.
+    const CHANNEL = 'sales';
+    // ============================================================
+
+    const leverCodes = {
+        green:  { name: 'GREEN',  state: 'Full Availability',       operationalState: 'Stable queue / Surplus availability',           actions: ['Scheduled coachings auto-approved (2-3 HC per interval)', 'WFM checks threshold for pullouts', 'Normal task distribution'] },
+        yellow: { name: 'YELLOW', state: 'Controlled Availability', operationalState: 'Limited availability with early queue movement', actions: ['Pullouts allowed but subject to approval', 'Leaders closely monitor queue behavior', 'Non-critical offline tasks may proceed at discretion'] },
+        orange: { name: 'ORANGE', state: 'Elevated Risk',           operationalState: 'Queue building / Potential stress incoming',     actions: ['All new pullout requests ON HOLD', 'Ongoing huddles, QA sessions, coachings wrap up within 5 mins', 'QAs and SMEs assist Ops', 'TLs provide floor support'] },
+        red:    { name: 'RED',    state: 'High Queue Risk',         operationalState: 'Sustained queue build-up or operational stress', actions: ['All pullouts and huddles CANCELLED', 'TLs provide call drivers and root cause', 'All non-essential activities suspended', 'TLs focus solely on floor support'] },
+        black:  { name: 'BLACK',  state: 'AHOD / Critical State',  operationalState: 'Severe volume surge or service level breach',    actions: ['All pullouts and huddles CANCELLED', 'SME/QA available for consultant support', 'TLs and leadership fully engaged in recovery', 'All efforts redirected to frontline'] }
+    };
+
+    let currentCode = 'green';
+    let isAlerting = false;
+    let currentQueueFilter = '';
+
+    function formatWait(secs) {
+        if (secs == null || secs === '' || isNaN(secs)) return '—';
+        secs = Math.floor(secs);
+        if (secs < 60) return secs + ' secs';
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return s > 0 ? `${m} min ${s} secs` : `${m} min`;
+    }
+
+    function setWaitDisplay(secs) {
+        const text = formatWait(secs);
+        const el = document.getElementById('statWait');
+        el.textContent = text;
+        // Auto-scale font size based on text length
+        const len = text.length;
+        if (len <= 3)       el.style.fontSize = '4.5rem';
+        else if (len <= 6)  el.style.fontSize = '3.6rem';
+        else if (len <= 9)  el.style.fontSize = '3rem';
+        else if (len <= 13) el.style.fontSize = '2.4rem';
+        else                el.style.fontSize = '2rem';
+    }
+
+    const flashOverlay     = document.getElementById('flashOverlay');
+    const codeName         = document.getElementById('codeName');
+    const codeState        = document.getElementById('codeState');
+    const operationalState = document.getElementById('operationalState');
+    const actions          = document.getElementById('actions');
+    const alertBadge       = document.getElementById('alertBadge');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const timeDisplay      = document.getElementById('timeDisplay');
+
+    async function fetchState() {
+        try {
+            let url = `${FUNCTIONS_BASE_URL}/get-state?key=${encodeURIComponent(SECRET_KEY)}`;
+            if (CHANNEL) url += `&channel=${encodeURIComponent(CHANNEL)}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(res.statusText);
+            const data = await res.json();
+            setStatus('connected');
+            const newCode     = data.code      || 'green';
+            const newAlerting = !!data.isAlerting;
+            const newFilter   = data.queueFilter || '';
+            if (newCode !== currentCode) updateCode(newCode);
+            if (newAlerting !== isAlerting) updateAlert(newAlerting);
+            if (newFilter !== currentQueueFilter) { currentQueueFilter = newFilter; fetchStats(); }
+        } catch {
+            setStatus('disconnected');
+        }
+    }
+
+    async function fetchStats() {
+        try {
+            let statsUrl = `${FUNCTIONS_BASE_URL}/get-stats?key=${encodeURIComponent(SECRET_KEY)}`;
+            if (currentQueueFilter) statsUrl += `&queueFilter=${encodeURIComponent(currentQueueFilter)}`;
+            const res = await fetch(statsUrl);
+            if (!res.ok) throw new Error(res.statusText);
+            const data = await res.json();
+
+            document.getElementById('statActive').textContent  = data.activeTasks  ?? '—';
+            document.getElementById('statWaiting').textContent = data.waitingTasks ?? '—';
+            setWaitDisplay(data.longestWait);
+
+            const w       = data.workers || {};
+            const avail   = w.available   || 0;
+            const unavail = w.unavailable || 0;
+            const offline = w.offline     || 0;
+            const total   = avail + unavail + offline || 1;
+
+            document.getElementById('countAvailable').textContent   = avail;
+            document.getElementById('countUnavailable').textContent = unavail;
+            document.getElementById('countOffline').textContent     = offline;
+
+            document.getElementById('barAvailable').style.width   = (avail   / total * 100).toFixed(1) + '%';
+            document.getElementById('barUnavailable').style.width = (unavail / total * 100).toFixed(1) + '%';
+            document.getElementById('barOffline').style.width     = (offline / total * 100).toFixed(1) + '%';
+        } catch { /* silent */ }
+    }
+
+    function updateCode(code) {
+        currentCode = code;
+        const d = leverCodes[code] || leverCodes.green;
+        codeName.textContent = d.name;
+        codeState.textContent = d.state;
+        operationalState.textContent = d.operationalState;
+        actions.innerHTML = d.actions.map(a => `<div class="action-item">• ${a}</div>`).join('');
+        document.body.className = `code-${code}`;
+        flashOverlay.className = `flash-overlay ${code}`;
+        if (isAlerting) flashOverlay.classList.add('active');
+    }
+
+    function updateAlert(alerting) {
+        isAlerting = alerting;
+        alertBadge.classList.toggle('visible', alerting);
+        flashOverlay.classList.toggle('active', alerting);
+    }
+
+    function setStatus(status) {
+        const map = { connected: 'Connected', disconnected: 'Disconnected', connecting: 'Connecting...' };
+        connectionStatus.textContent = map[status] || status;
+        connectionStatus.className = `connection-status ${status}`;
+    }
+
+    function updateTime() {
+        timeDisplay.textContent = new Date().toLocaleTimeString('en-AU', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'f' || e.key === 'F') {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+            else document.exitFullscreen().catch(() => {});
+        }
+    });
+
+    setTimeout(() => { document.getElementById('fullscreenHint').style.opacity = '0'; }, 8000);
+
+    // Apply channel label to title and heading
+    if (CHANNEL) {
+        const label = CHANNEL.charAt(0).toUpperCase() + CHANNEL.slice(1);
+        document.title = `Lever Code — ${label}`;
+        document.querySelector('.page-title').textContent = `Lever Code — ${label}`;
+    }
+
+    fetchState();
+    fetchStats();
+    setInterval(fetchState, 2000);
+    setInterval(fetchStats, 5000);
+    updateTime();
+    setInterval(updateTime, 1000);
+</script>
+</body>
+</html>
